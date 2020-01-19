@@ -1,0 +1,286 @@
+---
+title: "pgp_gene_analysis"
+author: "Shawn Higdon"
+date: "1/14/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Libraries
+```{r, message=FALSE}
+library(treeio)
+library(ggtree)
+library(ggnewscale)
+library(ComplexHeatmap)
+library(tidyverse)
+library(ape)
+library(circlize)
+library(dendextend)
+library(randomcoloR)
+library(RColorBrewer)
+```
+
+## Read in metadata files
+```{r}
+# ABB to BCW ID MAP
+abb_bcw_labels <- read.csv("./genome_metadata/abb_genome_bcw_labels.csv", header = T)
+## change _ to - for BCW id
+abb_bcw_labels$BCW_ID <- sub("_", "-", abb_bcw_labels$BCW_ID)
+
+# read in number of bins from metabat
+metabat_bins <- read.csv("./genome_metadata/all_bin_count.csv", header = F, col.names = c("ID", "n_bins"))
+metabat_bins$bcw_id <- abb_bcw_labels$BCW_ID[match(metabat_bins$ID, abb_bcw_labels$ABB_ID)]
+
+# Sourmash LCA Genome Classification Data
+smash_lca_whole_genomes <- read.csv("./sourmash_data/sm-lca-whole_genomes-all-k31.csv", header = T)
+
+# Read in quast Summary for all isolate assemblies done with MEgahit
+asm_stats <- read_tsv("genome_metadata/assembly_stats/all_quast_reports.tsv") # includes eukaryotic isolates
+
+# Read in assembly coverage stat table
+asm_cov <- read.table("genome_metadata/assembly_stats/avg_coverage.tsv", header = T)
+
+# Add AVG_COV to asm_stats
+asm_stats <- inner_join(asm_stats, asm_cov, by = "Assembly")
+
+```
+
+## Add BCW labels to all metadata files
+```{r}
+
+# Add BCW label to sourmash lca data
+smash_lca_whole_genomes$bcw_id <- abb_bcw_labels$BCW_ID[match(smash_lca_whole_genomes$ID, abb_bcw_labels$ABB_ID)]
+## change _ to - for bcw id
+smash_lca_whole_genomes$bcw_id <- sub("_", "-", smash_lca_whole_genomes$bcw_id)
+```
+
+## Generate list of bacterial isolates with single genome bin
+```{r}
+# create new dataframe
+single_isolates <- metabat_bins %>% select( "bcw_id", "n_bins")
+
+# add genus data
+single_isolates$genus <- smash_lca_whole_genomes$genus[match(single_isolates$bcw_id, smash_lca_whole_genomes$bcw_id)]
+
+# empty cells for genus are 'unassigned'
+single_isolates$genus <- sub("^$", "unassigned", single_isolates$genus)
+
+# create unique genus color for plotting
+set.seed(852)
+genus_colors <- data.frame(Genus = unique(single_isolates$genus), Color =  distinctColorPalette(length(unique(single_isolates$genus))))
+
+## add genus color to `single_isolates` dataframe
+single_isolates$genus_color <- genus_colors$Color[match(single_isolates$genus, genus_colors$Genus)]
+
+# add phylum data
+single_isolates$phylum <- smash_lca_whole_genomes$phylum[match(single_isolates$bcw_id, smash_lca_whole_genomes$bcw_id)]
+
+# empty cells for Phylum are 'unassigned'
+single_isolates$phylum <- sub("^$", "unassigned", single_isolates$phylum)
+
+# create unique phylum colors for plotting
+phylum_colors <- data.frame(phylum = unique(single_isolates$phylum), Color =  distinctColorPalette(length(unique(single_isolates$phylum))))
+
+## add phylum color to `single_isolates` dataframe
+single_isolates$phylum_color <- phylum_colors$Color[match(single_isolates$phylum, phylum_colors$phylum)]
+
+# remove eukaryotes
+single_isolates <- single_isolates %>% filter(genus != "Meyerozyma" &
+                                                genus != "Rhodotorula")
+# remove isolates that were pulled apart
+single_isolates <- single_isolates %>% filter(bcw_id != "BCW-201831.1" &
+                                                bcw_id != "BCW-201831.2" &
+                                                bcw_id != "BCW-200557.1" &
+                                                bcw_id != "BCW-200557.2")
+# Keep only isolates with 1 genomic bin
+single_isolates <- single_isolates %>% filter(n_bins == 1)
+
+# add abb_ids
+single_isolates$abb_id <- abb_bcw_labels$ABB_ID[match(single_isolates$bcw_id, abb_bcw_labels$BCW_ID)]
+
+# add total length of genome assembly
+single_isolates$asm_length <- asm_stats$`Total length`[match(single_isolates$abb_id, asm_stats$Assembly)]
+
+# remove isolates with genome assembly length > 10 Mbp
+single_isolates <- single_isolates %>% filter(asm_length < 10000000)
+single_isolates$asm_length <- single_isolates$asm_length/1000000
+single_isolates$asm_length <- round(single_isolates$asm_length, digits = 2)
+
+# add N50 of genome assembly
+single_isolates$N50 <- asm_stats$N50[match(single_isolates$abb_id, asm_stats$Assembly)]
+single_isolates$N50 <- single_isolates$N50/1000
+single_isolates$N50 <- round(single_isolates$N50, digits = 2)
+
+# add N contigs
+single_isolates$n_contigs <- asm_stats$`# contigs`[match(single_isolates$abb_id, asm_stats$Assembly)]
+
+# add Avg_Cov
+single_isolates$avg_cov <- asm_stats$AVG_COV[match(single_isolates$abb_id, asm_stats$Assembly)]
+
+# single isolates supp table
+## change _ to - in bcw_id
+single_isolates$bcw_id <- sub("_", "-", single_isolates$bcw_id)
+single_iso_supp_table <- single_isolates %>% select(bcw_id,
+                                                    asm_length,
+                                                    n_contigs,
+                                                    avg_cov,
+                                                    N50)
+
+# add whole taxonomy to supp table
+single_iso_supp_table <- inner_join(single_iso_supp_table, smash_lca_whole_genomes, by = "bcw_id")
+
+# remove unwanted variables from join
+single_iso_supp_table <- select(single_iso_supp_table, -ID, -status, -strain)
+
+# add 'unclassified' to empty cells
+single_iso_supp_table <- as_tibble(apply(single_iso_supp_table, 2, function(x) gsub("^$|^ $", "NA", x)))
+
+# reorder based on ascending BCW ID number
+single_iso_supp_table <- arrange(single_iso_supp_table, bcw_id)
+
+# write csv for Supp Table S5
+write_csv(single_iso_supp_table, "./R_output_files/Table_S5.csv")
+
+```
+
+
+## Read in NIF hmmscan output files
+
+> Genomes 214 and 231 have zero hits. This is due to failure of sequencing or extremely low coverage. Output files were removed.
+
+> Note: If a table in the list of data.frames is empty, an error will occur when attempting to use mapply(cbind, df_list, "new_var"=v1, SIMPLIFY=F)
+
+## Read in HMMsearch - NIFscan_V2 files
+```{r, message=FALSE}
+# Create a list of isolate genome IDs
+Kp_all_isolate_list <- read.table("./NIF_operon_metadata/all_Kp_input.txt")
+
+# Read in the hmmscan Search output files for nif genes in each isolate's annotated faa list
+Kp_nifscan_list <- list.files(path = "NIFscan_v2_output/kleb_pneu", pattern = 'Kp_*', recursive = T, full.names = T)
+#Kp_nifscan_list
+
+# Create a list of Kleb_pneu nifscan search output tables
+Kp_nifscan_tbl_list <- lapply(Kp_nifscan_list, read_tsv)
+
+# Add a column to every table that indicates the isolate genome for each NIF-TIGRFAM hmmscan hit
+Kp_nifscan_tbl_list <- mapply(cbind, Kp_nifscan_tbl_list, "isolate"=Kp_all_isolate_list$V1, SIMPLIFY=F)
+
+# Create One Dataframe for NIF-TIGRFAM matches of all isolates
+Kp_nifscan_df <- do.call("rbind", Kp_nifscan_tbl_list)
+
+# Add a column to each record that adds annotation information for each TIGRFAM
+## Read in map file
+Kp_hmm_map <- read_tsv("./NIF_operon_metadata/kleb_pneum_nif_regulon.txt", col_names = T)
+
+## match HMM annotation from kp_hmm_map to nifscan family name
+Kp_nifscan_df$gene <- Kp_hmm_map$gene[match(Kp_nifscan_df$Family, Kp_hmm_map$hmm)]
+
+## match ABB isolate ID on Kp_nifscan_df to BCW_ID on abb_genome_bcw_labels
+Kp_nifscan_df$bcw_id <- abb_bcw_labels$BCW_ID[match(Kp_nifscan_df$isolate, abb_bcw_labels$ABB_ID)]
+
+# create ordered list of nif genes columns for plotting
+Kp_operon_order <- c("nifA",
+                     "nifL",
+                     "nifJ",
+                     "nifH",
+                     "nifD",
+                     "nifK",
+                     "nifE",
+                     "nifN",
+                     "nifU",
+                     "nifS",
+                     "nifV",
+                     "nifM",
+                     "nifW",
+                     "nifF",
+                     "nifB",
+                     "nifQ")
+```
+
+## Filter on complete PGP cases
+```{r, message=FALSE}
+## Filter to keep only records that match single_isolate_complete_cases
+Kp_nifscan_df <- Kp_nifscan_df %>% filter(bcw_id %in% single_isolates$bcw_id)
+
+## Check the number of surivivng isolates among all records for HMM data
+n_distinct(Kp_nifscan_df$bcw_id)
+
+```
+
+> 492 of the 611 genomes survived the filtering, which agrees with number of complete cases for PGP assay data of single genomic bin isolates.
+
+## Filtering functions
+```{r}
+
+# Create a Function to Filter with max. e-value cut off and 0.3 min. model coverage
+psHMM_0.3_filter <- function(x) {
+  filter(x, `E-value` <= 1e-06, `Coverage` >= 0.35)
+}
+
+# Create a Function to Filter with max. e-value cut off and 0.5 min. model coverage
+psHMM_0.5_filter <- function(x) {
+  filter(x, `E-value` <= 1e-06, `Coverage` >= 0.5)
+}
+
+# Create a Function to Filter with max. e-value cut off and 0.9 min. model coverage
+psHMM_0.75_filter <- function(x) {
+  filter(x, `E-value` <= 1e-06, `Coverage` >= 0.75)
+}
+
+```
+
+## 75 % HMM coverage
+
+```{r}
+Kp_nifscan_0.75_fdf <- psHMM_0.75_filter(Kp_nifscan_df) # Filtering with coverage >= 0.9 and E-val =< 1e-06 
+
+n_distinct(Kp_nifscan_0.75_fdf$bcw_id)
+```
+
+### Count the Hits
+
+```{r}
+
+# count number of records for unique combinations of TIGRFAM, BCW_ID, pro_query
+Kp_nifscan_0.75_fdf_grp <- Kp_nifscan_0.75_fdf %>% 
+  group_by(Family, bcw_id, Query_ID) %>% 
+  summarise(count=n())
+
+Kp_nifscan_0.75_fdf_grp
+
+
+# Identify which records have multiple hits returned
+Kp_nifscan_0.75_fdf_replicates <- Kp_nifscan_0.75_fdf_grp %>% 
+  filter(count != 1)
+
+n_distinct(Kp_nifscan_0.75_fdf_replicates$bcw_id)
+
+```
+
+> There are zero duplicated records of genes matching an HMM included in the search.
+
+## Generate Counts for Heatmap
+```{r}
+# Create a data frame with new variable of counts for each annotation call
+Kp_hmm_0.75_count <- Kp_nifscan_0.75_fdf %>% group_by(gene, bcw_id) %>% count()
+
+n_distinct(Kp_hmm_0.75_count$bcw_id)
+
+# convert annotation calls to factor type
+Kp_hmm_0.75_count$gene <- as.factor(Kp_hmm_0.75_count$gene)
+
+# convert dataframe from narrow to wide format: rows as isolates, columns as genes
+Kp_hmm_0.75_count_df <- spread(Kp_hmm_0.75_count, gene, n, drop = T)
+
+# replace all NA values with count of '0'
+Kp_hmm_0.75_count_df[is.na(Kp_hmm_0.75_count_df)] <- 0
+
+```
