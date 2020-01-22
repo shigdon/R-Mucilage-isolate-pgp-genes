@@ -2,3 +2,10 @@
 .Rhistory
 .RData
 .Ruserdata
+
+# hmm files
+*.ps
+
+# excel files
+*.xlsx
+

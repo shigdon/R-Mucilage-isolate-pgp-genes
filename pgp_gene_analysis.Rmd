@@ -26,6 +26,7 @@ library(circlize)
 library(dendextend)
 library(randomcoloR)
 library(RColorBrewer)
+library(viridis)
 ```
 
 ## Read in metadata files
@@ -146,19 +147,39 @@ single_iso_supp_table <- as_tibble(apply(single_iso_supp_table, 2, function(x) g
 # reorder based on ascending BCW ID number
 single_iso_supp_table <- arrange(single_iso_supp_table, bcw_id)
 
-# write csv for Supp Table S5
+# write csv for MS1 Supp Table S5
 write_csv(single_iso_supp_table, "./R_output_files/Table_S5.csv")
 
 ```
 
+## Filtering functions
+```{r}
 
-## Read in NIF hmmscan output files
+# Create a Function to Filter with max. e-value cut off and 0.3 min. model coverage
+psHMM_0.3_filter <- function(x) {
+  filter(x, `E-value` <= 1e-06, `Coverage` >= 0.35)
+}
+
+# Create a Function to Filter with max. e-value cut off and 0.5 min. model coverage
+psHMM_0.5_filter <- function(x) {
+  filter(x, `E-value` <= 1e-06, `Coverage` >= 0.5)
+}
+
+# Create a Function to Filter with max. e-value cut off and 0.9 min. model coverage
+psHMM_0.75_filter <- function(x) {
+  filter(x, `E-value` <= 1e-06, `Coverage` >= 0.75)
+}
+
+```
+
+## NIF Gene Analysis
+
+### Read in HMMsearch - NIFscan_V2 files
 
 > Genomes 214 and 231 have zero hits. This is due to failure of sequencing or extremely low coverage. Output files were removed.
 
 > Note: If a table in the list of data.frames is empty, an error will occur when attempting to use mapply(cbind, df_list, "new_var"=v1, SIMPLIFY=F)
 
-## Read in HMMsearch - NIFscan_V2 files
 ```{r, message=FALSE}
 # Create a list of isolate genome IDs
 Kp_all_isolate_list <- read.table("./NIF_operon_metadata/all_Kp_input.txt")
@@ -205,7 +226,7 @@ Kp_operon_order <- c("nifA",
                      "nifQ")
 ```
 
-## Filter on complete PGP cases
+### Filter on complete PGP cases
 ```{r, message=FALSE}
 ## Filter to keep only records that match single_isolate_complete_cases
 Kp_nifscan_df <- Kp_nifscan_df %>% filter(bcw_id %in% single_isolates$bcw_id)
@@ -217,33 +238,15 @@ n_distinct(Kp_nifscan_df$bcw_id)
 
 > 492 of the 611 genomes survived the filtering, which agrees with number of complete cases for PGP assay data of single genomic bin isolates.
 
-## Filtering functions
-```{r}
-
-# Create a Function to Filter with max. e-value cut off and 0.3 min. model coverage
-psHMM_0.3_filter <- function(x) {
-  filter(x, `E-value` <= 1e-06, `Coverage` >= 0.35)
-}
-
-# Create a Function to Filter with max. e-value cut off and 0.5 min. model coverage
-psHMM_0.5_filter <- function(x) {
-  filter(x, `E-value` <= 1e-06, `Coverage` >= 0.5)
-}
-
-# Create a Function to Filter with max. e-value cut off and 0.9 min. model coverage
-psHMM_0.75_filter <- function(x) {
-  filter(x, `E-value` <= 1e-06, `Coverage` >= 0.75)
-}
-
-```
-
-## 75 % HMM coverage
+### 75 % HMM coverage
 
 ```{r}
 Kp_nifscan_0.75_fdf <- psHMM_0.75_filter(Kp_nifscan_df) # Filtering with coverage >= 0.9 and E-val =< 1e-06 
 
 n_distinct(Kp_nifscan_0.75_fdf$bcw_id)
 ```
+
+> 492 distinct isolates surviving 
 
 ### Count the Hits
 
@@ -267,7 +270,7 @@ n_distinct(Kp_nifscan_0.75_fdf_replicates$bcw_id)
 
 > There are zero duplicated records of genes matching an HMM included in the search.
 
-## Generate Counts for Heatmap
+### Generate Counts for Heatmap
 ```{r}
 # Create a data frame with new variable of counts for each annotation call
 Kp_hmm_0.75_count <- Kp_nifscan_0.75_fdf %>% group_by(gene, bcw_id) %>% count()
@@ -282,5 +285,564 @@ Kp_hmm_0.75_count_df <- spread(Kp_hmm_0.75_count, gene, n, drop = T)
 
 # replace all NA values with count of '0'
 Kp_hmm_0.75_count_df[is.na(Kp_hmm_0.75_count_df)] <- 0
+
+```
+
+> 492 isolate genomes surviving.
+
+## PGP GENE SCAN
+### Read in the hmmscan output files
+
+> Note: If a table in the list of data.frames is empty, an error will occur when attempting to use mapply(cbind, df_list, "new_var"=v1, SIMPLIFY=F)
+
+### Read in HMMscan output - pgpscan.sh files
+```{r, message=FALSE}
+
+# Create a list of isolate genome IDs
+all_isolate_list <- read.table("./genome_metadata/isolate_list.txt")
+
+# Read in the hmmscan search output files for pgp genes in each isolate's annotated faa list (from prokka)
+pgp_scan_list <- list.files(path = "pgp_genes", pattern = 'BCW-*', recursive = T, full.names = T)
+#pgp_scan_list
+
+# Create a list of pgpscan output tables
+pgp_scan_tbl_list <- lapply(pgp_scan_list, read_tsv)
+
+# Add a column to every table that indicates the isolate genome for each hmmscan hit
+pgp_scan_tbl_list <- mapply(cbind, pgp_scan_tbl_list, "bcw_id"=all_isolate_list$V1, SIMPLIFY=F)
+
+# Create One Dataframe for PGPscan matches of all isolates
+pgp_scan_df <- do.call("rbind", pgp_scan_tbl_list)
+
+# Add a column to each record that adds annotation information for each TIGRFAM
+## Read in map file
+pgp_hmm_map <- read_csv("./genome_metadata/pgp_hmm_map.csv", col_names = T)
+
+## match HMM annotation from pgp_hmm_map to nifscan family name
+pgp_scan_df$gene <- pgp_hmm_map$gene[match(pgp_scan_df$Family, pgp_hmm_map$hmm)]
+
+```
+
+### Filtering functions
+```{r}
+
+# Create a Function to Filter with max. e-value cut off and 0.9 min. model coverage
+psHMM_pgp_filter <- function(x) {
+  filter(x, `E-value` <= 1e-06, `Coverage` >= 0.8)
+}
+
+```
+
+### 80 % HMM coverage
+
+```{r}
+pgp_scan_fdf <- psHMM_pgp_filter(pgp_scan_df) # Filtering with coverage >= 0.9 and E-val =< 1e-06 
+
+n_distinct(pgp_scan_fdf$bcw_id)
+```
+
+### Deduplicate the Hits
+
+```{r}
+
+# count number of records for unique combinations of TIGRFAM, Isolate_ID, protein_query_id
+pgp_scan_fdf_dup <- pgp_scan_fdf %>% 
+  group_by(Family, bcw_id, Query_ID) %>% 
+  mutate(count=(n()))
+
+pgp_scan_fdf_dedup <- pgp_scan_fdf_dup %>% top_n(1, Coverage)
+
+```
+
+> 36 duplicate observations for model-protein pairs eliminated
+
+### Generate Counts for Heatmap
+```{r}
+# Create a data frame with new variable of counts for each annotation call
+pgp_scan_hmm_count <- pgp_scan_fdf_dedup %>% group_by(gene, bcw_id) %>% count()
+
+n_distinct(pgp_scan_hmm_count$bcw_id)
+
+# convert annotation calls to factor type
+pgp_scan_hmm_count$gene <- as.factor(pgp_scan_hmm_count$gene)
+
+# convert dataframe from narrow to wide format: rows as isolates, columns as genes
+pgp_scan_hmm_count_df <- spread(pgp_scan_hmm_count, gene, n, drop = T)
+
+# replace all NA values with count of '0'
+pgp_scan_hmm_count_df[is.na(pgp_scan_hmm_count_df)] <- 0
+
+# De-select out cyd genes
+
+pgp_scan_ggtree_count_df <- select(pgp_scan_hmm_count_df,
+                                     "bcw_id",
+                                     "acdS",
+                                     "ipdC/ppdC",
+                                     "pqq-DH",
+                                     "pqqB",
+                                     "pqqC",
+                                     "pqqD",
+                                     "pqqE",
+                                     "pqqF"
+                                     )
+
+```
+
+## PGP Master DF
+
+> Make a master dataframe with gene counts for essential nif genes and pgp marker genes.
+
+```{r}
+# Select genomes in PGP counts only in NIF counts
+pgp_counts_master <- pgp_scan_ggtree_count_df %>% filter(bcw_id %in% Kp_hmm_0.75_count_df$bcw_id)
+
+# Select only essential nif genes (nifHDKENB)
+nif_counts_master <- Kp_hmm_0.75_count_df %>% select("bcw_id",
+                                                     "nifH",
+                                                     "nifD",
+                                                     "nifK",
+                                                     "nifE",
+                                                     "nifN",
+                                                     "nifB")
+
+# Merge the two dataframes by 'bcw_id'
+pgp_master_counts <- full_join(nif_counts_master, pgp_counts_master, by = "bcw_id")
+
+# Add Genus label for each isolate to 'pgp_master_counts'
+pgp_master_counts$Genus <- single_isolates$genus[match(pgp_master_counts$bcw_id, single_isolates$bcw_id)]
+
+pgp_master_counts$Genus <- as.factor(pgp_master_counts$Genus) # coerce to factor
+
+levels(pgp_master_counts$Genus) # show genus factor levels
+
+head(pgp_master_counts$Genus) # check genera
+colnames(pgp_master_counts) # check colnames
+head(rownames(pgp_master_counts)) # check rownames
+```
+
+### Make Gene Presence-Absence DF
+```{r}
+# Convert count data to binary
+pgp_master_binary <- pgp_master_counts %>% mutate(
+  nifH = if_else(nifH > 0, 1, 0),
+  nifD = if_else(nifD > 0, 1, 0),
+  nifK = if_else(nifK > 0, 1, 0),
+  nifE = if_else(nifE > 0, 1, 0),
+  nifN = if_else(nifN > 0, 1, 0),
+  nifB = if_else(nifB > 0, 1, 0),
+  acdS = if_else(acdS > 0, 1, 0),
+  `ipdC/ppdC` = if_else(`ipdC/ppdC` > 0, 1, 0),
+  pqqB = if_else(pqqB > 0, 1, 0),
+  pqqC = if_else(pqqC > 0, 1, 0),
+  pqqD = if_else(pqqD > 0, 1, 0),
+  pqqE = if_else(pqqE > 0, 1, 0),
+  pqqF = if_else(pqqF > 0, 1, 0),
+  `pqq-DH` = if_else(`pqq-DH` > 0, 1, 0)
+)
+
+```
+
+## Table 1 - Summarize by Genus
+
+```{r}
+# nifH
+table1.nifH <- pgp_master_counts %>%
+  group_by(Genus, nifH) %>%
+  filter(nifH >= 1) %>%
+  count() %>%
+  pivot_wider(names_from = nifH, values_from = n, names_prefix = "nifH_") %>%
+  replace(is.na(.), 0) %>%
+  as_tibble()
+## Sum rows
+table1.nifH_sum <- table1.nifH %>%
+  mutate(nifH = rowSums(.[2:3])) %>%
+  select(Genus, nifH)
+
+# nifD
+table1.nifD <- pgp_master_counts %>%
+  group_by(Genus, nifD) %>%
+  filter(nifD >= 1) %>%
+  count() %>%
+  pivot_wider(names_from = nifD, values_from = n, names_prefix = "nifD_") %>%
+  replace(is.na(.), 0) %>%
+  as_tibble()
+## Sum rows
+table1.nifD_sum <- table1.nifD %>%
+  mutate(nifD = rowSums(.[2:5])) %>%
+  select(Genus, nifD)
+
+# nifK
+table1.nifK <- pgp_master_counts %>%
+  group_by(Genus, nifK) %>%
+  filter(nifK >= 1) %>%
+  count() %>%
+  pivot_wider(names_from = nifK, values_from = n, names_prefix = "nifK_") %>%
+  replace(is.na(.), 0) %>%
+  as_tibble()
+## Sum rows
+table1.nifK_sum <- table1.nifK %>%
+  mutate(nifK = rowSums(.[2:4])) %>%
+  select(Genus, nifK)
+
+# nifE
+table1.nifE <- pgp_master_counts %>%
+  group_by(Genus, nifE) %>%
+  filter(nifE >= 1) %>%
+  count() %>%
+  pivot_wider(names_from = nifE, values_from = n, names_prefix = "nifE_") %>%
+  replace(is.na(.), 0) %>%
+  as_tibble()
+## Sum rows
+table1.nifE_sum <- table1.nifE %>%
+  mutate(nifE = rowSums(.[2:6])) %>%
+  select(Genus, nifE)
+
+# nifN
+table1.nifN <- pgp_master_counts %>%
+  group_by(Genus, nifN) %>%
+  filter(nifN >= 1) %>%
+  count() %>%
+  pivot_wider(names_from = nifN, values_from = n, names_prefix = "nifN_") %>%
+  replace(is.na(.), 0) %>%
+  as_tibble()
+## Sum rows
+table1.nifN_sum <- table1.nifN %>%
+  mutate(nifN = rowSums(.[2:4])) %>%
+  select(Genus, nifN)
+
+# nifB
+table1.nifB <- pgp_master_counts %>%
+  group_by(Genus, nifB) %>%
+  filter(nifB >= 1) %>%
+  count() %>%
+  pivot_wider(names_from = nifB, values_from = n, names_prefix = "nifB_") %>%
+  replace(is.na(.), 0) %>%
+  as_tibble()
+## Sum rows
+table1.nifB_sum <- table1.nifB %>%
+  mutate(nifB = rowSums(.[2])) %>%
+  select(Genus, nifB)
+
+# acdS
+table1.acdS <- pgp_master_counts %>%
+  group_by(Genus, acdS) %>%
+  filter(acdS >= 1) %>%
+  count() %>%
+  pivot_wider(names_from = acdS, values_from = n, names_prefix = "acdS_") %>%
+  replace(is.na(.), 0) %>%
+  as_tibble()
+## Sum rows
+table1.acdS_sum <- table1.acdS %>%
+  mutate(acdS = rowSums(.[2:4])) %>%
+  select(Genus, acdS)
+
+# `ipdC/ppdC`
+table1.ipdC <- pgp_master_counts %>%
+  group_by(Genus, `ipdC/ppdC`) %>%
+  filter(`ipdC/ppdC` >= 1) %>%
+  count() %>%
+  pivot_wider(names_from = `ipdC/ppdC`, values_from = n, names_prefix = "`ipdC/ppdC`_") %>%
+  replace(is.na(.), 0) %>%
+  as_tibble()
+## Sum rows
+table1.ipdC_sum <- table1.ipdC %>%
+  mutate(`ipdC/ppdC` = rowSums(.[2:10])) %>%
+  select(Genus, `ipdC/ppdC`)
+
+# `pqq-DH`
+table1.pqqDH <- pgp_master_counts %>%
+  group_by(Genus, `pqq-DH`) %>%
+  filter(`pqq-DH` >= 1) %>%
+  count() %>%
+  pivot_wider(names_from = `pqq-DH`, values_from = n, names_prefix = "`pqq-DH`_") %>%
+  replace(is.na(.), 0) %>%
+  as_tibble()
+## Sum rows
+table1.pqqDH_sum <- table1.pqqDH %>%
+  mutate(`pqq-DH` = rowSums(.[2:5])) %>%
+  select(Genus, `pqq-DH`)
+
+# pqqB
+table1.pqqB <- pgp_master_counts %>%
+  group_by(Genus, pqqB) %>%
+  filter(pqqB >= 1) %>%
+  count() %>%
+  pivot_wider(names_from = pqqB, values_from = n, names_prefix = "pqqB_") %>%
+  replace(is.na(.), 0) %>%
+  as_tibble()
+## Sum rows
+table1.pqqB_sum <- table1.pqqB %>%
+  mutate(pqqB = rowSums(.[2:3])) %>%
+  select(Genus, pqqB)
+
+# pqqC
+table1.pqqC <- pgp_master_counts %>%
+  group_by(Genus, pqqC) %>%
+  filter(pqqC >= 1) %>%
+  count() %>%
+  pivot_wider(names_from = pqqC, values_from = n, names_prefix = "pqqC_") %>%
+  replace(is.na(.), 0) %>%
+  as_tibble()
+## Sum rows
+table1.pqqC_sum <- table1.pqqC %>%
+  mutate(pqqC = rowSums(.[2])) %>%
+  select(Genus, pqqC)
+
+# pqqD
+table1.pqqD <- pgp_master_counts %>%
+  group_by(Genus, pqqD) %>%
+  filter(pqqD >= 1) %>%
+  count() %>%
+  pivot_wider(names_from = pqqD, values_from = n, names_prefix = "pqqD_") %>%
+  replace(is.na(.), 0) %>%
+  as_tibble()
+## Sum rows
+table1.pqqD_sum <- table1.pqqD %>%
+  mutate(pqqD = rowSums(.[2:3])) %>%
+  select(Genus, pqqD)
+
+# pqqE
+table1.pqqE <- pgp_master_counts %>%
+  group_by(Genus, pqqE) %>%
+  filter(pqqE >= 1) %>%
+  count() %>%
+  pivot_wider(names_from = pqqE, values_from = n, names_prefix = "pqqE_") %>%
+  replace(is.na(.), 0) %>%
+  as_tibble()
+## Sum rows
+table1.pqqE_sum <- table1.pqqE %>%
+  mutate(pqqE = rowSums(.[2:4])) %>%
+  select(Genus, pqqE)
+
+# pqqF
+table1.pqqF <- pgp_master_counts %>%
+  group_by(Genus, pqqF) %>%
+  filter(pqqF >= 1) %>%
+  count() %>%
+  pivot_wider(names_from = pqqF, values_from = n, names_prefix = "pqqF_") %>%
+  replace(is.na(.), 0) %>%
+  as_tibble()
+## Sum rows
+table1.pqqF_sum <- table1.pqqF %>%
+  mutate(pqqF = rowSums(.[2])) %>%
+  select(Genus, pqqF)
+
+# Merge tables
+## create list of 'sum' tables
+table1_list <- mget(ls(pattern = "_sum"))
+
+## merge all sum tables into one
+table1_all <- Reduce(
+  function(x, y, ...) merge(x, y, all = TRUE, ...),
+  table1_list
+)
+
+# add sumtotals at bottom
+table1_all[,2:15] <- sapply(table1_all[,2:15], as.numeric)
+#str(table1_all)
+table1_all[25,(2:15)] <- colSums(table1_all[,2:15], na.rm=TRUE)
+table1_all[25,1] <- "Total"
+
+# replace NA with zero
+table1_all[is.na(table1_all)] <- 0
+
+# reorder columns
+table1_all <- as_tibble(table1_all) %>% select("Genus",
+                                               "nifH",
+                                               "nifD",
+                                               "nifK",
+                                               "nifE",
+                                               "nifN",
+                                               "nifB",
+                                               "acdS",
+                                               "ipdC/ppdC",
+                                               "pqqB",
+                                               "pqqC",
+                                               "pqqD",
+                                               "pqqE",
+                                               "pqqF",
+                                               "pqq-DH")
+
+
+# write to csv
+write_csv(table1_all, "./R_output_files/MS2-genus-pgp-table1.csv", col_names = TRUE)
+
+```
+
+### Comparative Summaries
+```{r}
+dos.santos_master <- 
+  pgp_master_binary %>%
+  group_by(Genus,
+           nifH,
+           nifD,
+           nifK,
+           nifE,
+           nifN,
+           nifB,
+           acdS,
+           `ipdC/ppdC`,
+           pqqB,
+           pqqC,
+           pqqD,
+           pqqE,
+           pqqF,
+           `pqq-DH`) %>%
+  filter(nifH >= 1 &
+           nifD >= 1 &
+           nifK >= 1 &
+           nifE >= 1 &
+           nifN >= 1 &
+           nifB >= 1) %>%
+  count()
+```
+
+## S1 Fig.
+
+### Sourmash Compare Data
+```{r}
+# read in sourmash k31 compare matrix for single isolate genomes
+sm_k31_cmp <- read.csv("sourmash_data/pure_isolate_492_cmp/pure_isolate_k31_cmp_492.csv", header=T, check.names = F)
+
+# set rownames to colnames
+rownames(sm_k31_cmp) <- colnames(sm_k31_cmp)
+#head(rownames(sm_k31_cmp))
+
+# add bcw ids to sm_k31_cmp data frame
+
+## change '_' to '-' for BCW ids
+abb_bcw_labels$BCW_ID <- sub("_", "-", abb_bcw_labels$BCW_ID)
+
+## match BCW ids
+sm_k31_cmp$bcw_id <- abb_bcw_labels$BCW_ID[match(rownames(sm_k31_cmp), abb_bcw_labels$BCW_ID)]
+
+# add genus info to sm_k31
+sm_k31_cmp$genus <- single_isolates$genus[match(sm_k31_cmp$bcw_id, single_isolates$bcw_id)]
+
+# Create tx_name Variable with Hybrid genus + Isolate Name: GENUS sp. BCWXXXX
+sm_k31_cmp$tx_name <- paste(sm_k31_cmp$genus, sprintf("sp. %s", sm_k31_cmp$bcw_id))
+
+# create matrix
+sm_k31_cmp_mat <- as.matrix(sm_k31_cmp[,1:492])
+
+# set rownames equal to colnames
+rownames(sm_k31_cmp_mat) <- sm_k31_cmp$tx_name
+colnames(sm_k31_cmp_mat) <- sm_k31_cmp$tx_name
+
+head(sm_k31_cmp$tx_name) # check
+
+# clone pgp_master_couts for merge with matrix
+pgp_master_counts2 <- as.data.frame(pgp_master_counts)
+
+# merge sourmash cmp matrix with gene count data for plot
+pgp_master <- cbind(sm_k31_cmp_mat, pgp_master_counts2)
+
+# convert binary (numeric) to factor for discrete scale mapping in plot
+pgp_master[,494:507] <- lapply(pgp_master[494:507], as.numeric)
+```
+
+### ggtree
+
+> Create ggtree with pgp data overlayed as heatmaps
+
+### All Single Isolates
+```{r}
+# Create Phylo Tree from sourmash matrix
+
+sm_k31_tree_mat <- dist2(sm_k31_cmp_mat)
+
+sm_k31_tree_fit <- hclust(sm_k31_tree_mat)
+
+sm_k31_phylo <- as.phylo(sm_k31_tree_fit)
+
+# set rownames of pgp_master to match tree tip labels
+rownames(pgp_master) <- sm_k31_phylo$tip.label
+
+colnames(pgp_master[,493:508])
+str(pgp_master[,493:508])
+```
+
+
+#### PGP Gene Tree
+```{r}
+# Make tree
+sm_k31_tree_o15 <- ggtree(sm_k31_phylo, color = "black", size = 0.3, layout = "fan", open.angle = 15)
+
+# Genus Tree
+pgp0_notip <- gheatmap(sm_k31_tree_o15, pgp_master[, "Genus", drop = F],
+                     offset = 0,
+                     width = 0.05,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 10,
+                     font.size = 3,
+                     color = "grey50") + 
+  scale_fill_manual(values=c("#E6BE53",
+                             "#CAD773",
+                             "#81D870",
+                             "#8F3EE4",
+                             "#E25F9D",
+                             "#D8E9D6",
+                             "#72A890",
+                             "#CDEC4C",
+                             "#C59D6B",
+                             "#86D6E1",
+                             "#77E94F",
+                             "#81748E",
+                             "#64E7A9",
+                             "#D3D0E3",
+                             "#767CDE",
+                             "#7DAEDE",
+                             "#E2684F",
+                             "#E1ABAA",
+                             "#7BEFDF",
+                             "#DA47D2",
+                             "#D7A7DF",
+                             "#E5DEA8",
+                             "#B4E3A7",
+                             "#CF7DDC"),
+                    name = "Genus",
+                    guide = guide_legend(
+                      direction = "vertical",
+                      ncol = 2,
+                      title.position = "top",
+                      title.theme = element_text(size = 18, hjust = 0.5),
+                      label.position = "right",
+                      label.theme = element_text(size = 14)
+                      )) + theme(legend.title = element_text(),
+                                 legend.key.size = unit(.5, "cm"))
+
+# Add gheatmap 1 for PGP counts
+pgp1_notip <- pgp0_notip + new_scale_fill()
+
+# Add gheatmap 0 for pgp gene presence absence
+pgp2_notip <- gheatmap(pgp1_notip, pgp_master[, 494:507, drop = F],
+                     offset = 0.3,
+                     width = 0.8,
+                     colnames_position = "top",
+                     colnames_angle = 0,
+                     colnames_offset_y = 10,
+                     font.size = 2.75,
+                     color = "grey50") + 
+  scale_fill_viridis_c(option="inferno",
+                       direction = -1,
+                       name = "PGP Gene HMM Hits",
+                       breaks = c(0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+                       guide = guide_colorbar(
+                         direction = "horizontal",
+                         title.position = "top",
+                         title.theme = element_text(size = 18, hjust = 0.5),
+                         barwidth = 18,
+                         label.position = "bottom",
+                         label.theme = element_text(size = 14)
+                         )) +
+  theme(legend.title = element_text(), legend.position = "right")
+
+pgp2_notip_rot <- print(rotate_tree(pgp2_notip, -82))
+
+# save plot
+
+ggsave("./Plots/Fig_S1.pdf", pgp2_notip_rot, width = 13, height = 8)
+
 
 ```
