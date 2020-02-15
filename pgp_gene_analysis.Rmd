@@ -9,11 +9,6 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
 ## Libraries
 ```{r, message=FALSE}
 library(treeio)
@@ -40,9 +35,6 @@ abb_bcw_labels$BCW_ID <- sub("_", "-", abb_bcw_labels$BCW_ID)
 metabat_bins <- read.csv("./genome_metadata/all_bin_count.csv", header = F, col.names = c("ID", "n_bins"))
 metabat_bins$bcw_id <- abb_bcw_labels$BCW_ID[match(metabat_bins$ID, abb_bcw_labels$ABB_ID)]
 
-# Sourmash LCA Genome Classification Data
-smash_lca_whole_genomes <- read.csv("./sourmash_data/sm-lca-whole_genomes-all-k31.csv", header = T)
-
 # Read in quast Summary for all isolate assemblies done with MEgahit
 asm_stats <- read_tsv("genome_metadata/assembly_stats/all_quast_reports.tsv") # includes eukaryotic isolates
 
@@ -54,13 +46,36 @@ asm_stats <- inner_join(asm_stats, asm_cov, by = "Assembly")
 
 ```
 
-## Add BCW labels to all metadata files
+## Merge Sourmash LCA Taxonomy Tables
 ```{r}
+# Sourmash LCA GenBank Classification Data
+smash_lca_whole_genomes <- read.csv("./sourmash_data/sm-lca-whole_genomes-all-k31.csv", header = T)
 
 # Add BCW label to sourmash lca data
 smash_lca_whole_genomes$bcw_id <- abb_bcw_labels$BCW_ID[match(smash_lca_whole_genomes$ID, abb_bcw_labels$ABB_ID)]
+
+## Add BCW label to sourmash lca data
+smash_lca_whole_genomes$bcw_id <- abb_bcw_labels$BCW_ID[match(smash_lca_whole_genomes$ID, abb_bcw_labels$ABB_ID)]
+
 ## change _ to - for bcw id
 smash_lca_whole_genomes$bcw_id <- sub("_", "-", smash_lca_whole_genomes$bcw_id)
+
+## add db label
+smash_lca_whole_genomes$db <- "GenBank"
+
+## empty cells for genus are 'unassigned'
+smash_lca_whole_genomes$genus <- sub("^$", "unassigned", smash_lca_whole_genomes$genus)
+
+# Sourmash LCA GTDB Classification Data
+smash_lca_gtdb <- read.csv("./sourmash_data/lca-classify-all-k31-gtdb89.csv", header = T, colClasses = "character")
+
+## ass bcw_id column
+smash_lca_gtdb$bcw_id <- smash_lca_gtdb$ID
+
+## add db label
+smash_lca_gtdb$db <- "GTDB"
+
+
 ```
 
 ## Generate list of bacterial isolates with single genome bin
@@ -69,10 +84,25 @@ smash_lca_whole_genomes$bcw_id <- sub("_", "-", smash_lca_whole_genomes$bcw_id)
 single_isolates <- metabat_bins %>% select( "bcw_id", "n_bins")
 
 # add genus data
-single_isolates$genus <- smash_lca_whole_genomes$genus[match(single_isolates$bcw_id, smash_lca_whole_genomes$bcw_id)]
+
+# add GenBank genus info to single isolates
+single_isolates$genus.gbk <- smash_lca_whole_genomes$genus[match(single_isolates$bcw_id,
+                                                            smash_lca_whole_genomes$bcw_id)]
+
+# add GTDB genus info to single isolates
+single_isolates$genus.gtdb <- smash_lca_gtdb$genus[match(single_isolates$bcw_id,
+                                                    smash_lca_gtdb$ID)]
+
+# push Genbank genus assignments to unclassified genus assignments (fill in the blanks)
+genus_merge <- single_isolates %>% select("bcw_id", "genus.gbk", "genus.gtdb")
+genus_merge <- genus_merge %>% mutate(genus.gtdb = ifelse(genus.gtdb %in% "", genus.gbk, genus.gtdb))
+
+single_isolates$genus <- genus_merge$genus.gtdb[match(single_isolates$bcw_id,
+                                                 genus_merge$bcw_id)]
+
 
 # empty cells for genus are 'unassigned'
-single_isolates$genus <- sub("^$", "unassigned", single_isolates$genus)
+#single_isolates$genus <- sub("^$", "unassigned", single_isolates$genus)
 
 # create unique genus color for plotting
 set.seed(852)
@@ -80,18 +110,6 @@ genus_colors <- data.frame(Genus = unique(single_isolates$genus), Color =  disti
 
 ## add genus color to `single_isolates` dataframe
 single_isolates$genus_color <- genus_colors$Color[match(single_isolates$genus, genus_colors$Genus)]
-
-# add phylum data
-single_isolates$phylum <- smash_lca_whole_genomes$phylum[match(single_isolates$bcw_id, smash_lca_whole_genomes$bcw_id)]
-
-# empty cells for Phylum are 'unassigned'
-single_isolates$phylum <- sub("^$", "unassigned", single_isolates$phylum)
-
-# create unique phylum colors for plotting
-phylum_colors <- data.frame(phylum = unique(single_isolates$phylum), Color =  distinctColorPalette(length(unique(single_isolates$phylum))))
-
-## add phylum color to `single_isolates` dataframe
-single_isolates$phylum_color <- phylum_colors$Color[match(single_isolates$phylum, phylum_colors$phylum)]
 
 # remove eukaryotes
 single_isolates <- single_isolates %>% filter(genus != "Meyerozyma" &
@@ -134,6 +152,7 @@ single_iso_supp_table <- single_isolates %>% select(bcw_id,
                                                     n_contigs,
                                                     avg_cov,
                                                     N50)
+
 
 # add whole taxonomy to supp table
 single_iso_supp_table <- inner_join(single_iso_supp_table, smash_lca_whole_genomes, by = "bcw_id")
@@ -455,7 +474,7 @@ table1.nifH <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifH_sum <- table1.nifH %>%
-  mutate(nifH = rowSums(.[2:3])) %>%
+  mutate(nifH = rowSums(.[2:4])) %>%
   select(Genus, nifH)
 
 # nifD
@@ -468,7 +487,7 @@ table1.nifD <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifD_sum <- table1.nifD %>%
-  mutate(nifD = rowSums(.[2:5])) %>%
+  mutate(nifD = rowSums(.[2:6])) %>%
   select(Genus, nifD)
 
 # nifK
@@ -481,7 +500,7 @@ table1.nifK <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifK_sum <- table1.nifK %>%
-  mutate(nifK = rowSums(.[2:4])) %>%
+  mutate(nifK = rowSums(.[2:5])) %>%
   select(Genus, nifK)
 
 # nifE
@@ -494,7 +513,7 @@ table1.nifE <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifE_sum <- table1.nifE %>%
-  mutate(nifE = rowSums(.[2:6])) %>%
+  mutate(nifE = rowSums(.[2:7])) %>%
   select(Genus, nifE)
 
 # nifN
@@ -507,7 +526,7 @@ table1.nifN <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifN_sum <- table1.nifN %>%
-  mutate(nifN = rowSums(.[2:4])) %>%
+  mutate(nifN = rowSums(.[2:5])) %>%
   select(Genus, nifN)
 
 # nifB
@@ -520,7 +539,7 @@ table1.nifB <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifB_sum <- table1.nifB %>%
-  mutate(nifB = rowSums(.[2])) %>%
+  mutate(nifB = rowSums(.[2:3])) %>%
   select(Genus, nifB)
 
 # acdS
@@ -533,7 +552,7 @@ table1.acdS <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.acdS_sum <- table1.acdS %>%
-  mutate(acdS = rowSums(.[2:4])) %>%
+  mutate(acdS = rowSums(.[2:5])) %>%
   select(Genus, acdS)
 
 # `ipdC/ppdC`
@@ -559,7 +578,7 @@ table1.pqqDH <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqDH_sum <- table1.pqqDH %>%
-  mutate(`pqq-DH` = rowSums(.[2:5])) %>%
+  mutate(`pqq-DH` = rowSums(.[2:6])) %>%
   select(Genus, `pqq-DH`)
 
 # pqqB
@@ -572,7 +591,7 @@ table1.pqqB <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqB_sum <- table1.pqqB %>%
-  mutate(pqqB = rowSums(.[2:3])) %>%
+  mutate(pqqB = rowSums(.[2:4])) %>%
   select(Genus, pqqB)
 
 # pqqC
@@ -585,7 +604,7 @@ table1.pqqC <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqC_sum <- table1.pqqC %>%
-  mutate(pqqC = rowSums(.[2])) %>%
+  mutate(pqqC = rowSums(.[2:3])) %>%
   select(Genus, pqqC)
 
 # pqqD
@@ -598,7 +617,7 @@ table1.pqqD <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqD_sum <- table1.pqqD %>%
-  mutate(pqqD = rowSums(.[2:3])) %>%
+  mutate(pqqD = rowSums(.[2:4])) %>%
   select(Genus, pqqD)
 
 # pqqE
@@ -611,7 +630,7 @@ table1.pqqE <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqE_sum <- table1.pqqE %>%
-  mutate(pqqE = rowSums(.[2:4])) %>%
+  mutate(pqqE = rowSums(.[2:5])) %>%
   select(Genus, pqqE)
 
 # pqqF
@@ -624,7 +643,7 @@ table1.pqqF <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqF_sum <- table1.pqqF %>%
-  mutate(pqqF = rowSums(.[2])) %>%
+  mutate(pqqF = rowSums(.[2:3])) %>%
   select(Genus, pqqF)
 
 # Merge tables
@@ -637,11 +656,13 @@ table1_all <- Reduce(
   table1_list
 )
 
+table1_all$Genus <- as.character(table1_all$Genus)
+
 # add sumtotals at bottom
 table1_all[,2:15] <- sapply(table1_all[,2:15], as.numeric)
-#str(table1_all)
-table1_all[25,(2:15)] <- colSums(table1_all[,2:15], na.rm=TRUE)
-table1_all[25,1] <- "Total"
+str(table1_all)
+table1_all[31,(2:15)] <- colSums(table1_all[,2:15], na.rm=TRUE)
+table1_all[31,1] <- "Total"
 
 # replace NA with zero
 table1_all[is.na(table1_all)] <- 0
@@ -716,8 +737,20 @@ abb_bcw_labels$BCW_ID <- sub("_", "-", abb_bcw_labels$BCW_ID)
 ## match BCW ids
 sm_k31_cmp$bcw_id <- abb_bcw_labels$BCW_ID[match(rownames(sm_k31_cmp), abb_bcw_labels$BCW_ID)]
 
-# add genus info to sm_k31
-sm_k31_cmp$genus <- single_isolates$genus[match(sm_k31_cmp$bcw_id, single_isolates$bcw_id)]
+# add GenBank genus info to sm_k31
+sm_k31_cmp$genus.gbk <- smash_lca_whole_genomes$genus[match(sm_k31_cmp$bcw_id,
+                                                            smash_lca_whole_genomes$bcw_id)]
+
+# add GTDB genus info to sm_k31
+sm_k31_cmp$genus.gtdb <- smash_lca_gtdb$genus[match(sm_k31_cmp$bcw_id,
+                                                    smash_lca_gtdb$ID)]
+
+# push Genbank genus assignments to unclassified genus assignments (fill in the blanks)
+genus_merge <- sm_k31_cmp %>% select("bcw_id", "genus.gbk", "genus.gtdb")
+genus_merge <- genus_merge %>% mutate(genus.gtdb = ifelse(genus.gtdb %in% "", genus.gbk, genus.gtdb))
+
+sm_k31_cmp$genus <- genus_merge$genus.gtdb[match(sm_k31_cmp$bcw_id,
+                                                 genus_merge$bcw_id)]
 
 # Create tx_name Variable with Hybrid genus + Isolate Name: GENUS sp. BCWXXXX
 sm_k31_cmp$tx_name <- paste(sm_k31_cmp$genus, sprintf("sp. %s", sm_k31_cmp$bcw_id))
@@ -731,7 +764,7 @@ colnames(sm_k31_cmp_mat) <- sm_k31_cmp$tx_name
 
 head(sm_k31_cmp$tx_name) # check
 
-# clone pgp_master_couts for merge with matrix
+# clone pgp_master_counts for merge with matrix
 pgp_master_counts2 <- as.data.frame(pgp_master_counts)
 
 # merge sourmash cmp matrix with gene count data for plot
@@ -740,6 +773,13 @@ pgp_master <- cbind(sm_k31_cmp_mat, pgp_master_counts2)
 # convert binary (numeric) to factor for discrete scale mapping in plot
 pgp_master[,494:507] <- lapply(pgp_master[494:507], as.numeric)
 ```
+
+```{r}
+test <- sm_k31_cmp %>% select("bcw_id", "genus")
+View(test)
+sort(unique(sm_k31_cmp$genus))
+```
+
 
 ### ggtree
 
@@ -777,30 +817,36 @@ pgp0_notip <- gheatmap(sm_k31_tree_o15, pgp_master[, "Genus", drop = F],
                      colnames_offset_y = 10,
                      font.size = 3,
                      color = "grey50") + 
-  scale_fill_manual(values=c("#E6BE53",
-                             "#CAD773",
-                             "#81D870",
-                             "#8F3EE4",
-                             "#E25F9D",
-                             "#D8E9D6",
-                             "#72A890",
-                             "#CDEC4C",
-                             "#C59D6B",
-                             "#86D6E1",
-                             "#77E94F",
-                             "#81748E",
-                             "#64E7A9",
-                             "#D3D0E3",
-                             "#767CDE",
-                             "#7DAEDE",
-                             "#E2684F",
-                             "#E1ABAA",
-                             "#7BEFDF",
-                             "#DA47D2",
-                             "#D7A7DF",
-                             "#E5DEA8",
-                             "#B4E3A7",
-                             "#CF7DDC"),
+  scale_fill_manual(values=c("#8EAFEB",
+                             "#9A61CE",
+                             "#8244E7",
+                             "#5DE58E",
+                             "#DE47DF",
+                             "#DFDC8F",
+                             "#79A560",
+                             "#DFE9D4",
+                             "#BDE9B4",
+                             "#E17FD9",
+                             "#9EEADA",
+                             "#6FE453",
+                             "#E1CFE2",
+                             "#5296B1",
+                             "#DA9EC3",
+                             "#919F85",
+                             "#906981",
+                             "#65E2BA",
+                             "#D9B99D",
+                             "#D6EC49",
+                             "#D8905B",
+                             "#DB459C",
+                             "#DC8790",
+                             "#6D79D1",
+                             "#A4C9DC",
+                             "#B0E477",
+                             "#E4C34F",
+                             "#5DD8E0",
+                             "#CFA3E9",
+                             "#E34D56"),
                     name = "Genus",
                     guide = guide_legend(
                       direction = "vertical",
@@ -846,3 +892,56 @@ ggsave("./Plots/Fig_S1.pdf", pgp2_notip_rot, width = 13, height = 8)
 
 
 ```
+
+## S1 Table.
+
+### import nif group lists from smash comparisons
+```{r}
+# dsp
+dsp.cmp <- read.csv("./sourmash_data/dsp_dos-santos-positive/pure_iso_dsp_k31_cmp.labels.txt", header = F, colClasses = "character", col.names = "bcw_id")
+dsp.cmp$NIF.Group <- "DSP"
+
+# sds
+sds.cmp <- read.csv("./sourmash_data/sds_semi-dos-santos/pure_iso_sds_k31_cmp.labels.txt", header = F, colClasses = "character", col.names = "bcw_id")
+sds.cmp$NIF.Group <- "SDS"
+
+# dsn
+dsn.cmp <- read.csv("./sourmash_data/dsn_dos-santos-negative/pure_iso_dsn_k31_cmp.labels.txt", header = F, colClasses = "character", col.names = "bcw_id")
+dsn.cmp$NIF.Group <- "DSN"
+
+# bind rows
+nif.group.labels <- bind_rows(dsp.cmp, sds.cmp, dsn.cmp)
+
+```
+
+> PGP trait profiles of Dos Santos Positive Isolates
+
+```{r}
+# clone pgp_master_counts for S2 Table.
+pgp_master_counts.3 <- pgp_master_counts
+
+# add NIF group labels
+pgp_master_counts.3$NIF.Group <- nif.group.labels$NIF.Group[match(pgp_master_counts.3$bcw_id, nif.group.labels$bcw_id)]
+
+S1.Table  <- pgp_master_counts.3 %>% select("bcw_id",
+                                          "Genus",
+                                          "NIF.Group",
+                                          "nifH",
+                                          "nifD",
+                                          "nifK",
+                                          "nifE",
+                                          "nifN",
+                                          "nifB",
+                                          "acdS",
+                                          "ipdC/ppdC",
+                                          "pqqB",
+                                          "pqqC",
+                                          "pqqD",
+                                          "pqqE",
+                                          "pqqF",
+                                          "pqq-DH") %>%
+  arrange(NIF.Group)
+
+write_csv(S1.Table, "./R_output_files/MS2-S1.Table-isolate.pgp.profiles.csv")
+```
+
