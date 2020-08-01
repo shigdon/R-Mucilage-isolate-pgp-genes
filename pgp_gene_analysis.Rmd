@@ -476,7 +476,7 @@ table1.nifH <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifH_sum <- table1.nifH %>%
-  mutate(nifH = rowSums(.[2:3])) %>%
+  mutate(nifH = rowSums(.[2:4])) %>%
   select(Genus, nifH)
 
 # nifD
@@ -489,7 +489,7 @@ table1.nifD <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifD_sum <- table1.nifD %>%
-  mutate(nifD = rowSums(.[2:5])) %>%
+  mutate(nifD = rowSums(.[2:6])) %>%
   select(Genus, nifD)
 
 # nifK
@@ -502,7 +502,7 @@ table1.nifK <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifK_sum <- table1.nifK %>%
-  mutate(nifK = rowSums(.[2:4])) %>%
+  mutate(nifK = rowSums(.[2:5])) %>%
   select(Genus, nifK)
 
 # nifE
@@ -515,7 +515,7 @@ table1.nifE <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifE_sum <- table1.nifE %>%
-  mutate(nifE = rowSums(.[2:6])) %>%
+  mutate(nifE = rowSums(.[2:7])) %>%
   select(Genus, nifE)
 
 # nifN
@@ -528,7 +528,7 @@ table1.nifN <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifN_sum <- table1.nifN %>%
-  mutate(nifN = rowSums(.[2:4])) %>%
+  mutate(nifN = rowSums(.[2:5])) %>%
   select(Genus, nifN)
 
 # nifB
@@ -541,7 +541,7 @@ table1.nifB <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifB_sum <- table1.nifB %>%
-  mutate(nifB = rowSums(.[2:2])) %>%
+  mutate(nifB = rowSums(.[2:3])) %>%
   select(Genus, nifB)
 
 # acdS
@@ -554,7 +554,7 @@ table1.acdS <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.acdS_sum <- table1.acdS %>%
-  mutate(acdS = rowSums(.[2:4])) %>%
+  mutate(acdS = rowSums(.[2:5])) %>%
   select(Genus, acdS)
 
 # `ipdC/ppdC`
@@ -567,7 +567,7 @@ table1.ipdC <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.ipdC_sum <- table1.ipdC %>%
-  mutate(`ipdC/ppdC` = rowSums(.[2:9])) %>%
+  mutate(`ipdC/ppdC` = rowSums(.[2:10])) %>%
   select(Genus, `ipdC/ppdC`)
 
 # `pqq-DH`
@@ -580,7 +580,7 @@ table1.pqqDH <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqDH_sum <- table1.pqqDH %>%
-  mutate(`pqq-DH` = rowSums(.[2:5])) %>%
+  mutate(`pqq-DH` = rowSums(.[2:6])) %>%
   select(Genus, `pqq-DH`)
 
 # pqqB
@@ -593,7 +593,7 @@ table1.pqqB <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqB_sum <- table1.pqqB %>%
-  mutate(pqqB = rowSums(.[2:3])) %>%
+  mutate(pqqB = rowSums(.[2:4])) %>%
   select(Genus, pqqB)
 
 # pqqC
@@ -606,7 +606,7 @@ table1.pqqC <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqC_sum <- table1.pqqC %>%
-  mutate(pqqC = rowSums(.[2:2])) %>%
+  mutate(pqqC = rowSums(.[2:3])) %>%
   select(Genus, pqqC)
 
 # pqqD
@@ -619,7 +619,7 @@ table1.pqqD <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqD_sum <- table1.pqqD %>%
-  mutate(pqqD = rowSums(.[2:3])) %>%
+  mutate(pqqD = rowSums(.[2:4])) %>%
   select(Genus, pqqD)
 
 # pqqE
@@ -632,7 +632,7 @@ table1.pqqE <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqE_sum <- table1.pqqE %>%
-  mutate(pqqE = rowSums(.[2:4])) %>%
+  mutate(pqqE = rowSums(.[2:5])) %>%
   select(Genus, pqqE)
 
 # pqqF
@@ -645,7 +645,7 @@ table1.pqqF <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqF_sum <- table1.pqqF %>%
-  mutate(pqqF = rowSums(.[2:2])) %>%
+  mutate(pqqF = rowSums(.[2:3])) %>%
   select(Genus, pqqF)
 
 # Merge tables
@@ -686,6 +686,9 @@ table1_all <- as_tibble(table1_all) %>% select("Genus",
                                                "pqqF",
                                                "pqq-DH")
 
+total_isolates <- pgp_master_counts %>% group_by(Genus) %>% count() %>% rename("N Isolates" = "n")
+
+table1_all <- right_join(total_isolates, table1_all, by = "Genus")
 
 # write to csv
 write_csv(table1_all, "./R_output_files/MS2-genus-pgp-table1.csv", col_names = TRUE)
