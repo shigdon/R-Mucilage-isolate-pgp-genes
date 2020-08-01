@@ -437,6 +437,8 @@ levels(pgp_master_counts$Genus) # show genus factor levels
 head(pgp_master_counts$Genus) # check genera
 colnames(pgp_master_counts) # check colnames
 head(rownames(pgp_master_counts)) # check rownames
+
+write_csv(pgp_master_counts, "./Tables/isolate-pgp-gene-counts.csv", col_names = T)
 ```
 
 ### Make Gene Presence-Absence DF
@@ -474,7 +476,7 @@ table1.nifH <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifH_sum <- table1.nifH %>%
-  mutate(nifH = rowSums(.[2:4])) %>%
+  mutate(nifH = rowSums(.[2:3])) %>%
   select(Genus, nifH)
 
 # nifD
@@ -487,7 +489,7 @@ table1.nifD <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifD_sum <- table1.nifD %>%
-  mutate(nifD = rowSums(.[2:6])) %>%
+  mutate(nifD = rowSums(.[2:5])) %>%
   select(Genus, nifD)
 
 # nifK
@@ -500,7 +502,7 @@ table1.nifK <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifK_sum <- table1.nifK %>%
-  mutate(nifK = rowSums(.[2:5])) %>%
+  mutate(nifK = rowSums(.[2:4])) %>%
   select(Genus, nifK)
 
 # nifE
@@ -513,7 +515,7 @@ table1.nifE <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifE_sum <- table1.nifE %>%
-  mutate(nifE = rowSums(.[2:7])) %>%
+  mutate(nifE = rowSums(.[2:6])) %>%
   select(Genus, nifE)
 
 # nifN
@@ -526,7 +528,7 @@ table1.nifN <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifN_sum <- table1.nifN %>%
-  mutate(nifN = rowSums(.[2:5])) %>%
+  mutate(nifN = rowSums(.[2:4])) %>%
   select(Genus, nifN)
 
 # nifB
@@ -539,7 +541,7 @@ table1.nifB <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.nifB_sum <- table1.nifB %>%
-  mutate(nifB = rowSums(.[2:3])) %>%
+  mutate(nifB = rowSums(.[2:2])) %>%
   select(Genus, nifB)
 
 # acdS
@@ -552,7 +554,7 @@ table1.acdS <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.acdS_sum <- table1.acdS %>%
-  mutate(acdS = rowSums(.[2:5])) %>%
+  mutate(acdS = rowSums(.[2:4])) %>%
   select(Genus, acdS)
 
 # `ipdC/ppdC`
@@ -565,7 +567,7 @@ table1.ipdC <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.ipdC_sum <- table1.ipdC %>%
-  mutate(`ipdC/ppdC` = rowSums(.[2:10])) %>%
+  mutate(`ipdC/ppdC` = rowSums(.[2:9])) %>%
   select(Genus, `ipdC/ppdC`)
 
 # `pqq-DH`
@@ -578,7 +580,7 @@ table1.pqqDH <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqDH_sum <- table1.pqqDH %>%
-  mutate(`pqq-DH` = rowSums(.[2:6])) %>%
+  mutate(`pqq-DH` = rowSums(.[2:5])) %>%
   select(Genus, `pqq-DH`)
 
 # pqqB
@@ -591,7 +593,7 @@ table1.pqqB <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqB_sum <- table1.pqqB %>%
-  mutate(pqqB = rowSums(.[2:4])) %>%
+  mutate(pqqB = rowSums(.[2:3])) %>%
   select(Genus, pqqB)
 
 # pqqC
@@ -604,7 +606,7 @@ table1.pqqC <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqC_sum <- table1.pqqC %>%
-  mutate(pqqC = rowSums(.[2:3])) %>%
+  mutate(pqqC = rowSums(.[2:2])) %>%
   select(Genus, pqqC)
 
 # pqqD
@@ -617,7 +619,7 @@ table1.pqqD <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqD_sum <- table1.pqqD %>%
-  mutate(pqqD = rowSums(.[2:4])) %>%
+  mutate(pqqD = rowSums(.[2:3])) %>%
   select(Genus, pqqD)
 
 # pqqE
@@ -630,7 +632,7 @@ table1.pqqE <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqE_sum <- table1.pqqE %>%
-  mutate(pqqE = rowSums(.[2:5])) %>%
+  mutate(pqqE = rowSums(.[2:4])) %>%
   select(Genus, pqqE)
 
 # pqqF
@@ -643,7 +645,7 @@ table1.pqqF <- pgp_master_counts %>%
   as_tibble()
 ## Sum rows
 table1.pqqF_sum <- table1.pqqF %>%
-  mutate(pqqF = rowSums(.[2:3])) %>%
+  mutate(pqqF = rowSums(.[2:2])) %>%
   select(Genus, pqqF)
 
 # Merge tables
@@ -776,7 +778,7 @@ pgp_master[,494:507] <- lapply(pgp_master[494:507], as.numeric)
 
 ```{r}
 test <- sm_k31_cmp %>% select("bcw_id", "genus")
-View(test)
+#View(test)
 sort(unique(sm_k31_cmp$genus))
 ```
 
@@ -944,4 +946,21 @@ S1.Table  <- pgp_master_counts.3 %>% select("bcw_id",
 
 write_csv(S1.Table, "./R_output_files/MS2-S1.Table-isolate.pgp.profiles.csv")
 ```
+
+### Comparative summary by NIF Group
+
+#### DSP Group - PQQ gene presence
+
+> Not considering pqq-DH, evaluate the number of DSP isolates possessing a homolog to any of the pqq operon genes.
+
+```{r}
+
+S1.Table %>% group_by(NIF.Group) %>%
+  filter(NIF.Group == "DSP") %>%
+  select(bcw_id, Genus, NIF.Group, pqqB, pqqC, pqqD, pqqE, pqqF) %>%
+  filter_at(vars(-bcw_id, -Genus, -NIF.Group), any_vars(. != 0))
+
+```
+
+> 32 DSP isolates have homologs to at least one of the pqq operon genes, amounting to 16.5%.
 
